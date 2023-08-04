@@ -1,80 +1,186 @@
 package main
 
 import (
-	"errors"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
 
 type todo struct {
-	ID        string `json:"id"`
-	Item      string `json:"item"`
-	Completed bool   `json:"completed"`
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Finished_at string `json:"finished_at"`
+	Created_at  string `json:"created_at"`
+	Updated_at  string `json:"updated_at"`
+	Deleted_at  string `json:"deleted_at"`
 }
 
-var todos = []todo{
-	{ID: "1", Item: "aceng", Completed: false},
-	{ID: "2", Item: "ihan", Completed: false},
-	{ID: "3", Item: "biran", Completed: false},
+var todos = []todo{}
+
+func generateID() string {
+	largestID := 0
+	for _, todo := range todos {
+		id, _ := strconv.Atoi(todo.ID)
+		if id > largestID {
+			largestID = id
+		}
+	}
+
+	// Generate a new unique ID based on the largest ID found
+	newID := strconv.Itoa(largestID + 1)
+
+	return newID
+}
+
+func createTodo(c *gin.Context) {
+	var input struct {
+		Title       string `json:"title"`
+		Description string `json:"description"`
+	}
+	now := time.Now().Format("02-1-2006 15:04:05")
+
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid data provided"})
+		return
+	}
+
+	newTodo := todo{
+		ID:          generateID(), // You can implement your own ID generation logic
+		Title:       input.Title,
+		Description: input.Description,
+		Created_at:  now,
+	}
+
+	// Save the todo to the database or slice (todos) here
+	todos = append(todos, newTodo)
+
+	c.JSON(http.StatusCreated, newTodo)
 }
 
 func getTodos(c *gin.Context) {
 	c.IndentedJSON(http.StatusOK, todos)
 }
 
-func addTodo(c *gin.Context) {
-	var newTodo todo
-
-	if err := c.BindJSON(&newTodo); err != nil {
-		return
-	}
-
-	todos = append(todos, newTodo)
-
-	c.IndentedJSON(http.StatusCreated, newTodo)
-}
-
 func getTodo(c *gin.Context) {
-	id := c.Param("id")
-	todo, err := getTodosById(id)
+	todoID := c.Param("id")
 
-	if err != nil {
-		c.IndentedJSON(http.StatusNotFound, gin.H{"message": "Todo not found"})
-		return
-	}
-
-	c.IndentedJSON(http.StatusOK, todo)
-}
-
-func toggleTodoStatus(c *gin.Context) {
-	id := c.Param("id")
-	todo, err := getTodosById(id)
-
-	if err != nil {
-		c.IndentedJSON(http.StatusNotFound, gin.H{"message": "Todo not Found"})
-		return
-	}
-
-	todo.Completed = !todo.Completed
-	c.IndentedJSON(http.StatusOK, todo)
-}
-
-func getTodosById(id string) (*todo, error) {
-	for i, t := range todos {
-		if t.ID == id {
-			return &todos[i], nil
+	// Find the todo by ID in the todos slice
+	var foundTodo todo
+	for i := range todos {
+		if todos[i].ID == todoID {
+			foundTodo = todos[i]
+			break
 		}
 	}
 
-	return nil, errors.New("")
+	// Check if the todo is found
+	if foundTodo.ID == "" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Todo not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, foundTodo)
+}
+
+func updateTodo(c *gin.Context) {
+	todoID := c.Param("id")
+
+	// Find the todo by ID in the todos slice
+	var updatedTodo todo
+	for i := range todos {
+		if todos[i].ID == todoID {
+			updatedTodo = todos[i]
+			break
+		}
+	}
+
+	// Check if the todo is found
+	if updatedTodo.ID == "" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Todo not found"})
+		return
+	}
+	var input struct {
+		Title       string `json:"title"`
+		Description string `json:"description"`
+	}
+
+	// Bind the JSON request body to the updatedTodo variable
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid data provided"})
+		return
+	}
+
+	// Update the todo in the todos slice
+	for i := range todos {
+		if todos[i].ID == todoID {
+			todos[i].Title = input.Title
+			todos[i].Description = input.Description
+			now := time.Now().Format("02-1-2006 15:04:05")
+			todos[i].Updated_at = now
+			updatedTodo = todos[i]
+			break
+		}
+	}
+
+	c.JSON(http.StatusOK, updatedTodo)
+}
+
+func finishTodo(c *gin.Context) {
+	todoID := c.Param("id")
+	var finishedTodo todo
+	for i := range todos {
+		if todos[i].ID == todoID {
+			finishedTodo = todos[i]
+			break
+		}
+	}
+	if finishedTodo.ID == "" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Todo not found"})
+		return
+	}
+
+	now := time.Now().Format("02-1-2006 15:04:05")
+	finishedTodo.Finished_at = now
+
+	for i := range todos {
+		if todos[i].ID == todoID {
+			todos[i] = finishedTodo
+			break
+		}
+	}
+
+	c.JSON(http.StatusOK, finishedTodo)
+
+}
+
+func deleteTodo(c *gin.Context) {
+	todoID := c.Param("id")
+	var deletedTodo todo
+	for i := range todos {
+		if todos[i].ID == todoID {
+			now := time.Now().Format("02-1-2006 15:04:05")
+			todos[i].Deleted_at = now
+			deletedTodo = todos[i]
+			break
+		}
+	}
+	if deletedTodo.ID == "" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Todo not Found"})
+	}
+
+	c.JSON(http.StatusOK, deletedTodo)
 }
 
 func main() {
 	router := gin.Default()
 	router.GET("/todos", getTodos)
 	router.GET("/todos/:id", getTodo)
-	router.PATCH("/todos/:id", toggleTodoStatus)
-	router.POST("/todos", addTodo)
+	router.PUT("/todos/:id", updateTodo)
+	router.POST("/todos", createTodo)
+	router.PATCH("/todos/:id/finish", finishTodo)
+	router.PATCH("/todos/:id/delete", deleteTodo)
 	router.Run("localhost:8080")
 }
